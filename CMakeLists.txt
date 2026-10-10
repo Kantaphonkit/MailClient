@@ -1,21 +1,36 @@
 ﻿# CMakeList.txt : CMake project for MailClient, include source and define
 # project specific logic here.
 #
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
+project(MailClient LANGUAGES CXX)
 
-# Enable Hot Reload for MSVC compilers if supported.
-if (POLICY CMP0141)
-  cmake_policy(SET CMP0141 NEW)
-  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_executable(MailClient
+    src/main.cpp
+    src/TcpConnection.cpp
+    src/Logger.cpp
+    src/MailMessage.cpp
+    src/SmtpClient.cpp
+    src/Pop3Client.cpp
+    src/Config.cpp
+    src/Mailbox.cpp
+    src/MailService.cpp
+    src/Cli.cpp
+)
+
+ configure_file(config/client.conf ${CMAKE_CURRENT_BINARY_DIR}/config/client.conf COPYONLY)
+
+if(WIN32)
+    target_link_libraries(MailClient PRIVATE ws2_32)
+    target_compile_definitions(MailClient PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0601)
 endif()
 
-project ("MailClient")
-
-# Add source to this project's executable.
-add_executable (MailClient "MailClient.cpp" "MailClient.h")
-
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET MailClient PROPERTY CXX_STANDARD 20)
+if(MSVC)
+    target_compile_options(MailClient PRIVATE /W4 /utf-8)
+else()
+    target_compile_options(MailClient PRIVATE -Wall -Wextra)
 endif()
 
 # TODO: Add tests and install targets if needed.
