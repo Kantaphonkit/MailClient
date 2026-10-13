@@ -12,7 +12,7 @@ int main() {
     try {
         Config cfg = Config::load("config/client.conf");
         Logger::init(cfg.logFile);
-        Logger::info("Client started for " + cfg.username);
+        Logger::info("Client started");
 
         SocketSystem sockets;     // WSAStartup / WSACleanup for the whole run
         MailService service(cfg);

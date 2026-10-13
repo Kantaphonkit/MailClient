@@ -13,10 +13,15 @@ class Cli {
 public:
     explicit Cli(MailService& service) : service_(service) {}
 
-    // Show the menu until the user chooses Exit (or input ends).
+    // Login screen -> menu -> (switch account -> login screen -> menu ...) until Exit.
     void run();
 
 private:
+    enum class MenuResult { Exit, SwitchAccount };
+
+    bool loginScreen();   // false = user wants to quit
+    MenuResult menu();    // the main menu for the logged-in account
+
     // Menu actions
     void checkInbox();
     void readMessage();

@@ -63,11 +63,8 @@ Config Config::load(const std::string& path) {
         else if (key == "pop3_port") {
             cfg.pop3Port = toInt(value, key, 1, 65535);
         }
-        else if (key == "username") {
-            cfg.username = value;
-        }
-        else if (key == "email") {
-            cfg.email = value;
+        else if (key == "default_email") {
+            cfg.defaultEmail = value;
         }
         else if (key == "timeout_seconds") {
             cfg.timeoutSeconds = toInt(value, key, 1, 300);
@@ -89,10 +86,8 @@ Config Config::load(const std::string& path) {
 
     // Validate what the rest of the program relies on.
     if (cfg.server.empty()) throw ConfigError("'server' must not be empty");
-    if (cfg.username.empty()) throw ConfigError("'username' is required");
-    if (cfg.email.empty()) cfg.email = cfg.username;
-    if (!MailMessage::isValidAddress(cfg.email)) {
-        throw ConfigError("'email' is not a valid address: '" + cfg.email + "'");
+    if (!cfg.defaultEmail.empty() && !MailMessage::isValidAddress(cfg.defaultEmail)) {
+        throw ConfigError("'default_email' is not a valid address: '" + cfg.defaultEmail + "'");
     }
     return cfg;
 }

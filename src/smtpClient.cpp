@@ -83,10 +83,10 @@ void SmtpClient::send(const MailMessage& msg) {
     if (msg.to.empty()) throw ProtocolError("No recipients");
 
     conn_.setReadTimeout(timeoutMs_);
-    conn_.connect(host_, port_, 5000);
-    Logger::info("Connected to SMTP server " + host_ + ":" + std::to_string(port_));
 
     try {
+        conn_.connect(host_, port_, 5000);
+        Logger::info("Connected to SMTP server " + host_ + ":" + std::to_string(port_));
         expect(readReply(), 220, "Greeting");
 
         // EHLO is the modern greeting; very old servers only know HELO.

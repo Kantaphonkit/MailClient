@@ -102,7 +102,7 @@ std::string Cli::askPassword(const std::string& prompt) {
 
 bool Cli::ensurePassword() {
     if (service_.hasPassword()) return true;
-    std::string pw = askPassword("Password for " + service_.config().username + ": ");
+    std::string pw = askPassword("Password for " + service_.account().email + ": ");
     if (pw.empty()) {
         std::cout << "No password entered.\n";
         return false;
@@ -134,21 +134,89 @@ void Cli::guarded(const std::function<void()>& action) {
     }
 }
 
-// ------------------------------------------------------------------ menu
+// ------------------------------------------------------------------ login + menu
 
 void Cli::run() {
-    const Config& cfg = service_.config();
-    std::cout << "=== Lightweight Mail Client ===\n"
-        << "Account: " << cfg.username << "   Server: " << cfg.server
-        << " (SMTP " << cfg.smtpPort << ", POP3 " << cfg.pop3Port << ")\n";
-
+    std::cout << "=== Lightweight Mail Client ===\n";
     while (!inputEnded_) {
-        std::cout << "\n1. Check Inbox\n"
+        if (!loginScreen()) break;
+        if (menu() == MenuResult::Exit) break;
+        service_.logout();
+        std::cout << "Logged out.\n";
+    }
+    service_.logout();  // forget the password before the program ends
+    std::cout << "Bye.\n";
+}
+
+// Ask for email + password and check them with the server.
+// Returns false if the user wants to quit.
+bool Cli::loginScreen() {
+    const Config& cfg = service_.config();
+    std::cout << "\n--- Login ---\n";
+    while (!inputEnded_) {
+        std::string prompt = cfg.defaultEmail.empty()
+            ? "Email (q = quit): "
+            : "Email (Enter = " + cfg.defaultEmail + ", q = quit): ";
+        std::string email = trim(ask(prompt));
+        if (inputEnded_ || email == "q" || email == "Q") return false;
+        if (email.empty()) email = cfg.defaultEmail;
+        if (email.empty()) continue;
+
+        Account acc;
+        try {
+            acc = Account::forEmail(email, cfg);
+        }
+        catch (const std::invalid_argument& e) {
+            std::cout << "[!] " << e.what() << "\n";
+            continue;
+        }
+
+        acc.password = askPassword("Password: ");
+        if (inputEnded_) return false;
+        if (acc.password.empty()) {
+            std::cout << "[!] The password must not be empty.\n";
+            continue;
+        }
+
+        service_.login(acc);
+        std::cout << "Checking login with " << acc.server << "...\n";
+        try {
+            service_.verifyLogin();
+            std::cout << "Logged in as " << acc.email << ".\n";
+            return true;
+        }
+        catch (const AuthError& e) {
+            std::cout << "[!] " << e.what() << "\n";
+        }
+        catch (const NetworkError& e) {
+            std::cout << "[!] Cannot reach the mail server: " << e.what() << "\n";
+            std::string answer = trim(ask("Continue offline with the saved messages of " +
+                acc.email + "? (y/n): "));
+            if (answer == "y" || answer == "Y") {
+                std::cout << "Offline mode: local messages only. Check Inbox will try the server again.\n";
+                return true;
+            }
+        }
+        catch (const ProtocolError& e) {
+            std::cout << "[!] The server refused the login: " << e.what() << "\n";
+        }
+        service_.logout();  // login failed: forget account and password, ask again
+    }
+    return false;
+}
+
+Cli::MenuResult Cli::menu() {
+    while (!inputEnded_) {
+        const Account& acc = service_.account();
+        std::cout << "\n--- " << acc.email << " @ " << acc.server << " (SMTP " << acc.smtpPort
+            << ", POP3 " << acc.pop3Port << ") ---\n"
+            << "1. Check Inbox\n"
             << "2. Read Message\n"
             << "3. Compose and Send Email\n"
             << "4. View Local Messages\n"
             << "5. Exit\n"
             << "6. Protocol trace: " << (service_.trace() ? "ON" : "OFF") << " (toggle)\n"
+            << "7. Switch account\n"
             << "> ";
         std::string choice;
         if (!readLine(choice)) break;
@@ -158,11 +226,13 @@ void Cli::run() {
         case 2: guarded([this] { readMessage(); }); break;
         case 3: guarded([this] { compose(); }); break;
         case 4: guarded([this] { viewLocal(); }); break;
-        case 5: std::cout << "Bye.\n"; return;
+        case 5: return MenuResult::Exit;
         case 6: service_.setTrace(!service_.trace()); break;
-        default: std::cout << "Please enter a number from 1 to 6.\n"; break;
+        case 7: return MenuResult::SwitchAccount;
+        default: std::cout << "Please enter a number from 1 to 7.\n"; break;
         }
     }
+    return MenuResult::Exit;
 }
 
 void Cli::checkInbox() {

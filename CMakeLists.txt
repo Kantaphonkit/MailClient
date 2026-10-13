@@ -18,6 +18,7 @@ add_executable(MailClient
     src/Mailbox.cpp
     src/MailService.cpp
     src/Cli.cpp
+    src/Account.cpp
 )
 
  configure_file(config/client.conf ${CMAKE_CURRENT_BINARY_DIR}/config/client.conf COPYONLY)

@@ -8,6 +8,7 @@
 #include "Pop3Client.h"
 #include "ProtocolErrors.h"
 #include "SmtpClient.h"
+#include "TcpConnection.h"
 
 namespace {
     using Clock = std::chrono::steady_clock;
@@ -17,29 +18,77 @@ namespace {
     }
 }  // namespace
 
-MailService::MailService(const Config& cfg)
-    : cfg_(cfg), mailbox_(cfg.mailboxDir, cfg.username) {
+void MailService::requireLogin() const {
+    if (!loggedIn()) throw std::logic_error("No account is logged in");
 }
 
-InboxResult MailService::checkInbox() {
-    InboxResult result;
-    auto start = Clock::now();
+void MailService::login(const Account& acc) {
+    account_ = acc;
+    mailbox_.emplace(cfg_.mailboxDir, acc.email);  // each account has its own local folder
+    Logger::info("Account selected: " + acc.email + " (server " + acc.server + ")");
+}
 
-    Pop3Client pop(cfg_.server, cfg_.pop3Port, cfg_.timeoutSeconds * 1000);
+void MailService::logout() {
+    if (loggedIn()) Logger::info("Logged out: " + account_.email);
+    account_ = Account{};  // also forgets the password
+    mailbox_.reset();
+}
+
+void MailService::verifyLogin() {
+    requireLogin();
+    try {
+        verifyLoginImpl();
+    }
+    catch (const NetworkError& e) {
+        Logger::error(std::string("POP3: ") + e.what());
+        throw;
+    }
+}
+
+void MailService::verifyLoginImpl() {
+    Pop3Client pop(account_.server, account_.pop3Port, cfg_.timeoutSeconds * 1000);
     pop.setTrace(trace_);
     pop.connect();
     try {
-        pop.login(cfg_.username, password_);
+        pop.login(account_.email, account_.password);
     }
     catch (const AuthError&) {
-        password_.clear();  // forget the wrong password so the user is asked again
+        account_.password.clear();
+        throw;
+    }
+    pop.quit();
+}
+
+InboxResult MailService::checkInbox() {
+    requireLogin();
+    try {
+        return checkInboxImpl();
+    }
+    catch (const NetworkError& e) {
+        Logger::error(std::string("POP3: ") + e.what());  // e.g. server down, timeout
+        throw;
+    }
+}
+
+InboxResult MailService::checkInboxImpl() {
+    InboxResult result;
+    auto start = Clock::now();
+
+    Pop3Client pop(account_.server, account_.pop3Port, cfg_.timeoutSeconds * 1000);
+    pop.setTrace(trace_);
+    pop.connect();
+    try {
+        pop.login(account_.email, account_.password);
+    }
+    catch (const AuthError&) {
+        account_.password.clear();  // forget the wrong password so the user is asked again
         throw;
     }
 
     std::vector<Pop3ListEntry> entries = pop.list();
     result.onServer = static_cast<int>(entries.size());
     for (const Pop3ListEntry& entry : entries) {
-        if (mailbox_.save(pop.retr(entry.number))) ++result.newSaved;
+        if (mailbox_->save(pop.retr(entry.number))) ++result.newSaved;
     }
     pop.quit();
 
@@ -50,7 +99,8 @@ InboxResult MailService::checkInbox() {
 }
 
 long long MailService::send(MailMessage msg) {
-    msg.from = cfg_.email;
+    requireLogin();
+    msg.from = account_.email;
     if (msg.to.empty()) throw std::invalid_argument("At least one recipient is required");
     for (const std::string& rcpt : msg.to) {
         if (!MailMessage::isValidAddress(rcpt)) {
@@ -59,7 +109,7 @@ long long MailService::send(MailMessage msg) {
     }
 
     auto start = Clock::now();
-    SmtpClient smtp(cfg_.server, cfg_.smtpPort, cfg_.timeoutSeconds * 1000);
+    SmtpClient smtp(account_.server, account_.smtpPort, cfg_.timeoutSeconds * 1000);
     smtp.setTrace(trace_);
     smtp.send(msg);
     long long ms = millisSince(start);
@@ -67,4 +117,9 @@ long long MailService::send(MailMessage msg) {
     Logger::info("Send time: " + std::to_string(ms) + " ms (" + std::to_string(msg.body.size()) +
         " byte body)");
     return ms;
+}
+
+std::vector<StoredMessage> MailService::localMessages() const {
+    requireLogin();
+    return mailbox_->loadAll();
 }

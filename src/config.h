@@ -15,8 +15,7 @@ struct Config {
     std::string server = "127.0.0.1";  // mail server address (SMTP and POP3)
     int smtpPort = 25;
     int pop3Port = 110;
-    std::string username;              // POP3 login, e.g. User_2@test.local
-    std::string email;                 // sender address; defaults to username
+    std::string defaultEmail;          // optional: suggested at the login screen
     int timeoutSeconds = 10;
     std::string mailboxDir = "data/mailbox";
     std::string logFile = "logs/client.log";
