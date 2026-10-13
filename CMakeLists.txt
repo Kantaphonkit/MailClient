@@ -26,7 +26,11 @@ endif()
 add_executable(MailClient src/main.cpp src/Cli.cpp)
 target_link_libraries(MailClient PRIVATE mailcore)
 
-set(OUR_TARGETS mailcore MailClient)
+# ---- MailBench: performance test (uses the same mailcore code as the clients)
+add_executable(MailBench bench/MailBench.cpp)
+target_link_libraries(MailBench PRIVATE mailcore)
+
+set(OUR_TARGETS mailcore MailClient MailBench)
 
 # ---- MailClientGui: the graphical client (Windows only: Win32 + Direct3D 11 + Dear ImGui)
 if(WIN32)
